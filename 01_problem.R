@@ -310,10 +310,25 @@ error_ind <- (d_hat != d_true)
 margin_diag <- abs(as.vector(S1_diag %*% psi1_true_g1)) /
                sqrt(sum(psi1_true_g1[-1]^2))  # intercept 제외한 norm
 
+near_err_vec <- error_ind[margin_diag <  median(margin_diag)]
+far_err_vec  <- error_ind[margin_diag >= median(margin_diag)]
+
+near_rate <- mean(near_err_vec)
+far_rate  <- mean(far_err_vec)
+
+# 경계 근처 vs 먼 곳 오류율 차이 검정 (two-proportion z-test)
+prop_test <- prop.test(
+  x = c(sum(near_err_vec), sum(far_err_vec)),
+  n = c(length(near_err_vec), length(far_err_vec)),
+  alternative = "greater"  # H1: 경계 근처 오류율 > 먼 곳
+)
+
 cat(sprintf("\n전체 오류율: %.4f (n=%d, γ=1)\n", mean(error_ind), N_DIAG))
-cat(sprintf("오류 집중: 결정 경계 가까운 절반 오류율 = %.4f, 먼 절반 = %.4f\n",
-    mean(error_ind[margin_diag < median(margin_diag)]),
-    mean(error_ind[margin_diag >= median(margin_diag)])))
+cat(sprintf("경계 근처(하위 50%%) 오류율 = %.4f\n", near_rate))
+cat(sprintf("경계 먼 곳(상위 50%%) 오류율 = %.4f\n", far_rate))
+cat(sprintf("비율 검정: χ²=%.3f, p=%.2e → 경계 집중 %s (α=0.01)\n",
+    prop_test$statistic, prop_test$p.value,
+    ifelse(prop_test$p.value < 0.01, "통계적으로 유의 ✓", "유의하지 않음")))
 
 df_diag <- data.frame(
   O1_1   = d_diag$O1[,1],

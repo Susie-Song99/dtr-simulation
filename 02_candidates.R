@@ -266,6 +266,89 @@ for (n_val in N_GRID) {
   cat("\n")
 }
 
+# ════════════════════════════════════════════════════════════
+# 유의성 검정 — n=500 기준, B=500 반복값으로 검정
+# ════════════════════════════════════════════════════════════
+cat("\n─────────────────────────────────────────────────────────\n")
+cat("유의성 검정 (n=500, B=500, γ=1)\n")
+cat("─────────────────────────────────────────────────────────\n")
+
+N_REPS_TEST <- 500
+N_TEST_SZ   <- 500
+set.seed(SEED)
+
+psi_vals <- lapply(METHODS_CAND, function(m) numeric(N_REPS_TEST))
+names(psi_vals) <- METHODS_CAND
+acc_vals_all <- lapply(METHODS_CAND, function(m) numeric(N_REPS_TEST))
+names(acc_vals_all) <- METHODS_CAND
+
+for (b in seq_len(N_REPS_TEST)) {
+  d <- generate_data_prob(N_TEST_SZ, gamma = 1.0)
+  for (m in METHODS_CAND) {
+    psi_hat <- tryCatch(
+      switch(m,
+             fullq  = fit_full_q_prob(d),
+             tian   = fit_tian_prob(d),
+             regret = fit_regret_prob(d)),
+      error = function(e) rep(NA_real_, P_PROB + 1)
+    )
+    if (anyNA(psi_hat)) {
+      psi_vals[[m]][b]     <- NA
+      acc_vals_all[[m]][b] <- NA
+    } else {
+      psi_vals[[m]][b]     <- psi_hat[PSI1_IDX]
+      acc_vals_all[[m]][b] <- compute_accuracy_prob(psi_hat, psi1_true, O1_test)
+    }
+  }
+}
+
+# Bias one-sample t-test: H0: E[ψ̂₁₁] = ψ₁*₁
+cat("\n[Bias 검정] H0: E[ψ̂₁₁] = ψ₁*₁ (일표본 t-검정)\n")
+cat(sprintf("%-18s  %8s  %8s  %8s  %10s\n",
+    "방법", "Bias", "SE", "t값", "p-value"))
+cat(strrep("-", 58), "\n")
+for (m in METHODS_CAND) {
+  vals <- psi_vals[[m]][!is.na(psi_vals[[m]])]
+  tt   <- t.test(vals, mu = psi1_true[PSI1_IDX])
+  sig  <- ifelse(tt$p.value < 0.05, "*", " ")
+  cat(sprintf("%-18s  %+8.4f  %8.4f  %8.3f  %10.2e%s\n",
+      METHOD_LABELS[m],
+      mean(vals) - psi1_true[PSI1_IDX],
+      sd(vals) / sqrt(length(vals)),
+      tt$statistic, tt$p.value, sig))
+}
+cat("  * p < 0.05 (H0 기각: 편향 유의)\n")
+
+# Acc 95% CI + Regret vs Full Q / Tian paired t-test
+cat("\n[Acc 비교] Regret vs 기타 방법 (paired t-검정)\n")
+cat(sprintf("%-18s  %6s  %16s  %10s  %10s\n",
+    "방법", "Acc", "95% CI", "ΔAcc vs Reg", "p-value"))
+cat(strrep("-", 68), "\n")
+
+reg_acc <- acc_vals_all[["regret"]][!is.na(acc_vals_all[["regret"]])]
+for (m in METHODS_CAND) {
+  vals <- acc_vals_all[[m]][!is.na(acc_vals_all[[m]])]
+  acc_m <- mean(vals)
+  se_m  <- sqrt(acc_m * (1 - acc_m) / length(vals))
+  ci_lo <- acc_m - 1.96 * se_m
+  ci_hi <- acc_m + 1.96 * se_m
+
+  if (m == "regret") {
+    cat(sprintf("%-18s  %6.4f  [%.4f, %.4f]  %10s  %10s\n",
+        METHOD_LABELS[m], acc_m, ci_lo, ci_hi, "—", "—"))
+  } else {
+    n_use <- min(length(reg_acc), length(vals))
+    tt <- t.test(reg_acc[1:n_use], vals[1:n_use], paired = TRUE,
+                 alternative = "greater")
+    sig <- ifelse(tt$p.value < 0.05, "*", " ")
+    cat(sprintf("%-18s  %6.4f  [%.4f, %.4f]  %+10.4f  %10.2e%s\n",
+        METHOD_LABELS[m], acc_m, ci_lo, ci_hi,
+        mean(reg_acc[1:n_use]) - mean(vals[1:n_use]),
+        tt$p.value, sig))
+  }
+}
+cat("  * Regret이 유의하게 높은 Acc (p < 0.05)\n")
+
 
 # ─── 플롯 ─────────────────────────────────────────────────────
 METHOD_COLORS <- c(fullq  = "#c03838", tian = "#e07830", regret = "#2a7a55")

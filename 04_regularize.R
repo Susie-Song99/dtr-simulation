@@ -297,29 +297,91 @@ summary_df <- do.call(rbind, lapply(METHODS, function(m) {
   est  <- results_raw[[m]][!is.na(results_raw[[m]])]
   acc  <- acc_raw[[m]][!is.na(acc_raw[[m]])]
   nerr <- nerr_raw[[m]][!is.na(nerr_raw[[m]])]
+  B_m  <- length(est)
+
+  # Acc 95% CI: SE = sqrt(Acc*(1-Acc)/B)
+  acc_mean <- mean(acc)
+  acc_se   <- sqrt(acc_mean * (1 - acc_mean) / B_m)
+
+  # Bias one-sample t-test: H0: E[ψ̂₁₁] = ψ₁*₁
+  bias_ttest <- t.test(est, mu = psi1_true[PSI1_IDX])
+
   data.frame(
-    method   = m,
-    bias     = mean(est) - psi1_true[PSI1_IDX],
-    abs_bias = abs(mean(est) - psi1_true[PSI1_IDX]),
-    var_psi  = var(est),
-    sd_psi   = sd(est),
-    acc      = mean(acc),
-    near_err = mean(nerr),
-    n_valid  = length(est)
+    method    = m,
+    bias      = mean(est) - psi1_true[PSI1_IDX],
+    abs_bias  = abs(mean(est) - psi1_true[PSI1_IDX]),
+    bias_pval = bias_ttest$p.value,   # H0: 편향=0
+    var_psi   = var(est),
+    sd_psi    = sd(est),
+    acc       = acc_mean,
+    acc_se    = acc_se,
+    acc_ci_lo = acc_mean - 1.96 * acc_se,
+    acc_ci_hi = acc_mean + 1.96 * acc_se,
+    near_err  = mean(nerr),
+    nerr_se   = sqrt(mean(nerr) * (1 - mean(nerr)) / B_m),
+    n_valid   = B_m
   )
 }))
 
+# ─── OLS 대비 paired t-test ────────────────────────────────────
+# B개 반복에서 각 방법 - OLS 차이로 검정 (짝지어진 비교)
+ols_acc  <- acc_raw[["OLS"]][!is.na(acc_raw[["OLS"]])]
+ols_nerr <- nerr_raw[["OLS"]][!is.na(nerr_raw[["OLS"]])]
+
+pairwise_test <- do.call(rbind, lapply(METHODS, function(m) {
+  if (m == "OLS") return(data.frame(method=m, acc_diff=0, acc_pval=NA,
+                                     nerr_diff=0, nerr_pval=NA))
+  m_acc  <- acc_raw[[m]][!is.na(acc_raw[[m]])]
+  m_nerr <- nerr_raw[[m]][!is.na(nerr_raw[[m]])]
+
+  # 길이 맞추기 (NA 제거 후 최소 길이 사용)
+  n_use <- min(length(ols_acc), length(m_acc))
+  acc_tt  <- t.test(m_acc[1:n_use], ols_acc[1:n_use], paired = TRUE)
+
+  n_use2  <- min(length(ols_nerr), length(m_nerr))
+  nerr_tt <- t.test(m_nerr[1:n_use2], ols_nerr[1:n_use2], paired = TRUE)
+
+  data.frame(
+    method    = m,
+    acc_diff  = acc_tt$estimate,    # 평균 차이 (방법 - OLS)
+    acc_pval  = acc_tt$p.value,
+    nerr_diff = nerr_tt$estimate,   # 평균 차이 (방법 - OLS), 음수 = 개선
+    nerr_pval = nerr_tt$p.value
+  )
+}))
+
+# ─── 결과 출력 ─────────────────────────────────────────────────
 cat("\n═══════════════════════════════════════════════════════════════\n")
 cat("후보 비교 결과 (n=500, γ=1.0, B=500)\n")
 cat("═══════════════════════════════════════════════════════════════\n")
-cat(sprintf("%-12s  %8s  %8s  %8s  %6s  %8s\n",
-    "방법", "|Bias|", "Var(ψ̂)", "SD(ψ̂)", "Acc", "경계오류율"))
-cat(strrep("-", 60), "\n")
+cat(sprintf("%-12s  %7s  %7s  %7s  %7s  %15s  %7s\n",
+    "방법", "|Bias|", "Bias_p", "Var(ψ̂)", "Acc",
+    "95% CI (Acc)", "경계오류"))
+cat(strrep("-", 80), "\n")
 for (i in seq_len(nrow(summary_df))) {
   r <- summary_df[i, ]
-  cat(sprintf("%-12s  %8.4f  %8.4f  %8.4f  %6.4f  %8.4f\n",
-      r$method, r$abs_bias, r$var_psi, r$sd_psi, r$acc, r$near_err))
+  bias_sig <- ifelse(!is.na(r$bias_pval) & r$bias_pval < 0.05, "*", " ")
+  cat(sprintf("%-12s  %7.4f%s %7.4f  %7.4f  %7.4f  [%.4f, %.4f]  %7.4f\n",
+      r$method, r$abs_bias, bias_sig, r$bias_pval,
+      r$var_psi, r$acc, r$acc_ci_lo, r$acc_ci_hi, r$near_err))
 }
+cat("  * Bias p-value < 0.05 (H0: E[ψ̂₁₁] = ψ₁*₁ 기각)\n")
+
+cat("\n[OLS 대비 paired t-test]\n")
+cat(sprintf("%-12s  %10s  %10s  %10s  %10s\n",
+    "방법", "ΔAcc", "Acc_p", "Δ경계오류", "Nerr_p"))
+cat(strrep("-", 58), "\n")
+for (i in seq_len(nrow(pairwise_test))) {
+  r <- pairwise_test[i, ]
+  if (r$method == "OLS") next
+  acc_sig  <- ifelse(!is.na(r$acc_pval)  & r$acc_pval  < 0.05, "*", " ")
+  nerr_sig <- ifelse(!is.na(r$nerr_pval) & r$nerr_pval < 0.05, "*", " ")
+  cat(sprintf("%-12s  %+10.4f%s %10.4f  %+10.4f%s %10.4f\n",
+      r$method,
+      r$acc_diff,  acc_sig,  r$acc_pval,
+      r$nerr_diff, nerr_sig, r$nerr_pval))
+}
+cat("  * p < 0.05 (OLS 대비 유의한 차이)\n")
 
 # ─── 기준(OLS) 대비 개선율 ────────────────────────────────────
 ols_row <- summary_df[summary_df$method == "OLS", ]

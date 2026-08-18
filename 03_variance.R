@@ -327,6 +327,31 @@ cat(sprintf("%-24s  %8.4f  %8.4f  %8.4f  %8.4f  %8.4f\n",
     "Var 차이 (IO−FQ)",
     diff_vals[1], diff_vals[2], diff_vals[3], diff_vals[4], diff_vals[5]))
 
+# γ=1에서 M̃이 전체 분산에서 차지하는 비율 + bootstrap 95% CI
+cat("\n[γ=1 분산 원천 비율 + 95% CI (bootstrap, B=1000)]\n")
+set.seed(SEED)
+N_BOOT <- 1000
+N_BOOT_SZ <- 2000
+boot_Mtilde_ratio <- vapply(seq_len(N_BOOT), function(b) {
+  O1b  <- matrix(rnorm(N_BOOT_SZ * P_PROB), N_BOOT_SZ, P_PROB)
+  A1b  <- sample(c(-1L, 1L), N_BOOT_SZ, replace = TRUE)
+  O2_1b <- O1b[,1] + A1_TO_O2 * A1b + rnorm(N_BOOT_SZ, 0, 0.3)
+  m2b   <- 1.0 * O2_1b^2
+  M_tilde_b <- m2b - mean(m2b)
+  eps2b     <- rnorm(N_BOOT_SZ, 0, SIGMA_R)
+  g2b       <- O2_1b
+  A2b       <- sample(c(-1L, 1L), N_BOOT_SZ, replace = TRUE)
+  G_tilde_b <- abs(g2b) - mean(abs(g2b))
+  Y1b       <- m2b + A2b * g2b + eps2b
+  var_total <- var(Y1b - A2b * g2b + abs(g2b))  # Var(Ỹ₁)
+  var(M_tilde_b) / var_total
+}, numeric(1L))
+
+cat(sprintf("  M̃ 비율: %.3f  95%% CI: [%.3f, %.3f]\n",
+    mean(boot_Mtilde_ratio),
+    quantile(boot_Mtilde_ratio, 0.025),
+    quantile(boot_Mtilde_ratio, 0.975)))
+
 # ─── 분산 원천 누적 바 차트 ──────────────────────────────────
 SOURCE_LABELS <- c(
   eps2    = "ε₂ (Stage 2 잡음, IO만)",
@@ -402,11 +427,23 @@ error_ind_io <- (d_hat_io != d_true_io)
 margin_io <- abs(as.vector(S1_diag_io %*% psi1_true)) /
              sqrt(sum(psi1_true[-1]^2))
 
+near_io <- error_ind_io[margin_io <  median(margin_io)]
+far_io  <- error_ind_io[margin_io >= median(margin_io)]
+
+# 경계 근처 vs 먼 곳 오류율 차이 — two-proportion z-test
+prop_io <- prop.test(
+  x = c(sum(near_io), sum(far_io)),
+  n = c(length(near_io), length(far_io)),
+  alternative = "greater"
+)
+
 cat(sprintf("\nIO-QL 전체 오류율: %.4f (n_diag=%d, train n=500)\n",
     mean(error_ind_io), N_DIAG_IO))
-cat(sprintf("경계 근처 절반 오류율: %.4f  /  먼 절반: %.4f\n",
-    mean(error_ind_io[margin_io <  median(margin_io)]),
-    mean(error_ind_io[margin_io >= median(margin_io)])))
+cat(sprintf("경계 근처(하위 50%%) 오류율: %.4f\n", mean(near_io)))
+cat(sprintf("경계 먼 곳(상위 50%%) 오류율: %.4f\n", mean(far_io)))
+cat(sprintf("비율 검정: χ²=%.3f, p=%.2e → 경계 집중 %s (α=0.01)\n",
+    prop_io$statistic, prop_io$p.value,
+    ifelse(prop_io$p.value < 0.01, "통계적으로 유의 ✓", "유의하지 않음")))
 
 # 10분위 오류율
 df_margin_io <- data.frame(
@@ -757,22 +794,50 @@ cat(sprintf("%-20s  %8.4f  %8.4f\n", "Var(ψ̂₁₁)",
 cat(sprintf("%-20s  %8.4f  %8.4f\n", "SD(ψ̂₁₁)",
     sd(psi1_fq_v), sd(psi1_io_v)))
 
+cat("\n[Stage 2 유의성 검정]\n")
+# H0: E[ψ̂₂₁] = PSI2_TRUE (=1.0) — one-sample t-test
+tt_psi2_fq <- t.test(psi2_fq_v, mu = PSI2_TRUE)
+tt_psi2_io <- t.test(psi2_io_v, mu = PSI2_TRUE)
+cat(sprintf("  Full Q  ψ̂₂₁ t-test: t=%.3f, p=%.3f → Bias %s\n",
+    tt_psi2_fq$statistic, tt_psi2_fq$p.value,
+    ifelse(tt_psi2_fq$p.value < 0.05, "유의 *", "유의하지 않음")))
+cat(sprintf("  IO-QL   ψ̂₂₁ t-test: t=%.3f, p=%.3f → Bias %s\n",
+    tt_psi2_io$statistic, tt_psi2_io$p.value,
+    ifelse(tt_psi2_io$p.value < 0.05, "유의 *", "유의하지 않음")))
+
+cat("\n[Stage 1 유의성 검정]\n")
+# H0: E[ψ̂₁₁] = ψ₁*₁ — one-sample t-test
+tt_psi1_fq <- t.test(psi1_fq_v, mu = psi1_true[PSI1_IDX])
+tt_psi1_io <- t.test(psi1_io_v, mu = psi1_true[PSI1_IDX])
+cat(sprintf("  Full Q  ψ̂₁₁ t-test: t=%.3f, p=%.2e → Bias %s\n",
+    tt_psi1_fq$statistic, tt_psi1_fq$p.value,
+    ifelse(tt_psi1_fq$p.value < 0.05, "유의 (편향 확인) *", "유의하지 않음")))
+cat(sprintf("  IO-QL   ψ̂₁₁ t-test: t=%.3f, p=%.3f → Bias %s\n",
+    tt_psi1_io$statistic, tt_psi1_io$p.value,
+    ifelse(tt_psi1_io$p.value < 0.05, "유의 *", "유의하지 않음")))
+
+# Full Q vs IO-QL Stage 1 Bias 차이 검정 (independent two-sample)
+tt_stage1_diff <- t.test(psi1_fq_v, psi1_io_v, paired = FALSE)
+cat(sprintf("  Full Q vs IO-QL Stage 1 편향 차이: t=%.3f, p=%.2e → %s\n",
+    tt_stage1_diff$statistic, tt_stage1_diff$p.value,
+    ifelse(tt_stage1_diff$p.value < 0.05, "두 방법 간 유의한 차이 *", "차이 없음")))
+
 cat("\n[진단 해석]\n")
 cat("Stage 2: Full Q vs IO-QL ψ̂₂₁ 편향 비교\n")
 cat(sprintf("  Full Q  |Bias(ψ̂₂₁)| = %.4f → ĝ₂ 추정 자체는 편향 %s\n",
     abs(mean(psi2_fq_v) - PSI2_TRUE),
-    ifelse(abs(mean(psi2_fq_v) - PSI2_TRUE) < 0.05, "작음", "있음")))
+    ifelse(tt_psi2_fq$p.value >= 0.05, "없음 ✓", "있음")))
 cat(sprintf("  IO-QL   |Bias(ψ̂₂₁)| = %.4f → ĝ₂ 추정 자체는 편향 %s\n",
     abs(mean(psi2_io_v) - PSI2_TRUE),
-    ifelse(abs(mean(psi2_io_v) - PSI2_TRUE) < 0.05, "작음", "있음")))
+    ifelse(tt_psi2_io$p.value >= 0.05, "없음 ✓", "있음")))
 cat(sprintf("  Full Q  MSE(m̂₂)     = %.4f → 주효과 오설정이 m̂₂ 오차를 만듦\n",
     mean(diag_3f["mse_m2_fq", ])))
 cat("\nStage 1: Full Q 편향 원인이 Stage 2가 아니라 Stage 1 회귀 자체임을 확인\n")
-cat(sprintf("  Full Q  Stage 1 |Bias| = %.4f (Stage 2 blip은 편향 없는데 Stage 1에서 편향)\n",
-    abs(mean(psi1_fq_v) - psi1_true[PSI1_IDX])))
-cat(sprintf("  IO-QL   Stage 1 |Bias| = %.4f, Var = %.4f\n",
+cat(sprintf("  Full Q  Stage 1 |Bias| = %.4f (p=%.2e, 유의 — Stage 2 blip은 무죄)\n",
+    abs(mean(psi1_fq_v) - psi1_true[PSI1_IDX]), tt_psi1_fq$p.value))
+cat(sprintf("  IO-QL   Stage 1 |Bias| = %.4f (p=%.3f), Var = %.4f\n",
     abs(mean(psi1_io_v) - psi1_true[PSI1_IDX]),
-    var(psi1_io_v)))
+    tt_psi1_io$p.value, var(psi1_io_v)))
 
 
 # ─── 결론 출력 ─────────────────────────────────────────────────
