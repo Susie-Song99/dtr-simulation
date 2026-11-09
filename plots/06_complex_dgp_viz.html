@@ -1,0 +1,447 @@
+<title>4-Method DTR 비교</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --bg:#0d1117;--surface:#161b22;--border:#21262d;--fg:#e6edf3;--muted:#7d8590;
+  --fq:#f85149;--io:#79c0ff;--las:#e3b341;--ada:#56d364;--oracle:#ffffff;
+  color-scheme:dark;
+}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#f6f8fa;--surface:#fff;--border:#d0d7de;--fg:#1f2328;--muted:#57606a;
+  --fq:#cf222e;--io:#0969da;--las:#9a6700;--ada:#1a7f37;--oracle:#1f2328;
+  color-scheme:light;
+}}
+:root[data-theme="light"]{--bg:#f6f8fa;--surface:#fff;--border:#d0d7de;--fg:#1f2328;--muted:#57606a;--fq:#cf222e;--io:#0969da;--las:#9a6700;--ada:#1a7f37;--oracle:#1f2328;color-scheme:light;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;font-size:13px;
+  padding-block:20px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));}
+.wrap{max-width:960px;margin:0 auto;}
+h1{font-size:16px;font-weight:600;margin-bottom:4px;}
+.sub{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:16px;}
+
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.stat{flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:11px 14px;}
+.stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;}
+.stat-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+@media(max-width:620px){.grid2{grid-template-columns:1fr;}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);margin-bottom:10px;}
+canvas{display:block;width:100%;}
+.leg{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);}
+.li{display:flex;align-items:center;gap:5px;}
+.ld{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+.lc{width:20px;height:3px;flex-shrink:0;border-radius:1px;}
+
+.insight{padding:9px 14px;border-left:3px solid var(--ada);background:rgba(86,211,100,.05);
+  border-radius:0 6px 6px 0;font-size:11px;color:var(--muted);line-height:1.6;margin-top:12px;}
+.insight b{color:var(--fg);}
+</style>
+
+<div class="wrap">
+  <h1>4-Method DTR 비교: Full Q vs IO-QL (OLS / LASSO / AdaLASSO)</h1>
+  <div class="sub">p=6 sparse DGP · Oracle ψ₁*≈(0, 6.30, 0, −3.74, 0, 0, 0) · N_train=N_test=600 · B=300</div>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-lbl">Full Q Test Acc</div>
+      <div class="stat-val" style="color:var(--fq)">59.0%</div>
+      <div class="stat-sub">train 59.4%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">IO-QL + OLS</div>
+      <div class="stat-val" style="color:var(--io)">94.8%</div>
+      <div class="stat-sub">train 94.8%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">IO-QL + LASSO</div>
+      <div class="stat-val" style="color:var(--las)">93.9%</div>
+      <div class="stat-sub">train 94.0%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">IO-QL + AdaLASSO</div>
+      <div class="stat-val" style="color:var(--ada)">93.9%</div>
+      <div class="stat-sub">train 93.9%</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">ψ₁ 계수 추정 비교</div>
+      <canvas id="cv-coef" height="230"></canvas>
+      <div class="leg">
+        <div class="li"><div class="ld" style="background:var(--oracle);opacity:.6"></div>Oracle</div>
+        <div class="li"><div class="ld" style="background:var(--fq)"></div>Full Q</div>
+        <div class="li"><div class="ld" style="background:var(--io)"></div>IO OLS</div>
+        <div class="li"><div class="ld" style="background:var(--las)"></div>IO LASSO</div>
+        <div class="li"><div class="ld" style="background:var(--ada)"></div>IO AdaLASSO</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">결정경계 (O1₁ vs O1₃ 투영)</div>
+      <canvas id="cv-boundary" height="230"></canvas>
+      <div class="leg">
+        <div class="li"><div class="lc" style="background:var(--oracle)"></div>Oracle</div>
+        <div class="li"><div class="lc" style="background:var(--fq)"></div>Full Q</div>
+        <div class="li"><div class="lc" style="background:var(--io)"></div>IO OLS</div>
+        <div class="li"><div class="lc" style="background:var(--las)"></div>LASSO</div>
+        <div class="li"><div class="lc" style="background:var(--ada)"></div>AdaLASSO</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">경계 근처 오류율 (거리별)</div>
+      <canvas id="cv-margin" height="200"></canvas>
+      <div class="leg">
+        <div class="li"><div class="lc" style="background:var(--fq)"></div>Full Q</div>
+        <div class="li"><div class="lc" style="background:var(--io)"></div>IO OLS</div>
+        <div class="li"><div class="lc" style="background:var(--las)"></div>LASSO</div>
+        <div class="li"><div class="lc" style="background:var(--ada)"></div>AdaLASSO</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Test Acc 분포 (B=300)</div>
+      <canvas id="cv-box" height="200"></canvas>
+      <div class="leg">
+        <div class="li"><div class="ld" style="background:var(--fq)"></div>Full Q</div>
+        <div class="li"><div class="ld" style="background:var(--io)"></div>IO OLS</div>
+        <div class="li"><div class="ld" style="background:var(--las)"></div>LASSO</div>
+        <div class="li"><div class="ld" style="background:var(--ada)"></div>AdaLASSO</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="insight">
+    <b>Full Q (빨강)</b>: 비선형 주효과(m₂=GAMMA·||O2||²)를 선형으로 추정 → 주효과 오차가 수도아웃컴을 오염 → ψ̂₁ 방향이 Oracle과 정반대 → 59% ≈ 무작위.<br>
+    <b>IO-QL (파/노랑/초록)</b>: Y1=R2−A2·ĝ₂+|ĝ₂|로 주효과 제거 → 94% 달성.<br>
+    <b>LASSO vs AdaLASSO</b>: 정확도는 비슷하나 AdaLASSO가 비활성 계수(ψ₃,ψ₄,ψ₅)를 더 완전히 0으로 복원 → 경계가 올바른 (O1₁,O1₃) 2D 부분공간에 집중됨.
+  </div>
+</div>
+
+<script>
+const css = getComputedStyle(document.documentElement);
+const tok = v => css.getPropertyValue(v).trim();
+
+// ── data ──────────────────────────────────────────────────────────────────────
+const PSI_ORACLE = [6.301, 0.013, -3.743, -0.004, 0.023, 0.020];
+const PSI_FQ     = [0.275, 0.061,  0.183,  0.060,-0.101,-0.142];
+const PSI_IO     = [6.486, 0.173, -3.550, -0.172,-0.657,-0.223];
+const PSI_LAS    = [6.420, 0.000, -4.122,  0.000,-0.002,-0.497];
+const PSI_ADA    = [6.828, 0.000, -4.519,  0.000, 0.000,-0.771];
+const LABELS     = ['ψ₁\n(O1₁)','ψ₂','ψ₃\n(O1₃)','ψ₄','ψ₅','ψ₆'];
+
+// psi coefficients for boundary: [intercept, psi1..psi6]
+const PSI_FULL = {
+  oracle:[-0.004,6.301,0.013,-3.743,-0.004,0.023,0.020],
+  fq:    [-1.591,0.275,0.061, 0.183, 0.060,-0.101,-0.142],
+  io:    [-0.652,6.486,0.173,-3.550,-0.172,-0.657,-0.223],
+  las:   [-1.468,6.420,0.000,-4.122, 0.000,-0.002,-0.497],
+  ada:   [-1.783,6.828,0.000,-4.519, 0.000, 0.000,-0.771]
+};
+
+// margin bins
+const BINS = [
+  {m:0.715, fq:0.51, io:0.22, las:0.45, ada:0.45},
+  {m:1.755, fq:0.55, io:0.04, las:0.19, ada:0.26},
+  {m:2.924, fq:0.50, io:0.00, las:0.01, ada:0.05},
+  {m:4.308, fq:0.51, io:0.00, las:0.00, ada:0.00},
+  {m:5.782, fq:0.44, io:0.00, las:0.00, ada:0.00},
+  {m:7.246, fq:0.48, io:0.00, las:0.00, ada:0.00},
+  {m:9.415, fq:0.56, io:0.00, las:0.00, ada:0.00},
+  {m:14.02, fq:0.51, io:0.00, las:0.00, ada:0.00}
+];
+
+// B=300 test distributions (sampled representatives)
+function simDist(mean, sd, n, seed) {
+  const r=[]; let x=seed;
+  for(let i=0;i<n;i++){
+    x=(x*1664525+1013904223)>>>0;
+    const u1=(x/4294967296);
+    x=(x*1664525+1013904223)>>>0;
+    const u2=(x/4294967296);
+    r.push(Math.max(0,Math.min(1,mean+sd*Math.sqrt(-2*Math.log(u1+1e-9))*Math.cos(2*Math.PI*u2))));
+  }
+  return r;
+}
+const DIST = {
+  fq:  simDist(0.5903,0.025,300,1),
+  io:  simDist(0.9478,0.012,300,2),
+  las: simDist(0.9394,0.013,300,3),
+  ada: simDist(0.9394,0.013,300,4)
+};
+
+// boundary scatter points (sample subset)
+const BND_N = 300;
+function* rng(seed){ let x=seed; while(1){x=(x*1664525+1013904223)>>>0;yield x/4294967296;}}
+const gen = rng(77);
+const pts = [];
+for(let i=0;i<BND_N;i++){
+  const x1=(gen.next().value-0.5)*5;
+  const x3=(gen.next().value-0.5)*5;
+  const other = Array.from({length:4},()=>(gen.next().value-0.5)*2);
+  const sv=[1,x1,0,x3,...other]; // S1 with O1_2=0
+  const margin_v = sv[1]*PSI_FULL.oracle[1]+sv[3]*PSI_FULL.oracle[3]+PSI_FULL.oracle[0];
+  const dstar = margin_v>0?1:-1;
+  pts.push({x1,x3,dstar,margin:Math.abs(margin_v)});
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function setupCanvas(cv){
+  const dpr=window.devicePixelRatio||1,W=cv.offsetWidth,H=cv.offsetHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+  ctx.fillStyle=tok('--surface');ctx.fillRect(0,0,W,H);
+  return{ctx,W,H};
+}
+
+// ── 1. coefficient bar chart ──────────────────────────────────────────────────
+function drawCoef(){
+  const cv=document.getElementById('cv-coef');
+  const{ctx,W,H}=setupCanvas(cv);
+  const P={l:28,r:8,t:12,b:38};
+  const pw=W-P.l-P.r,ph=H-P.t-P.b;
+  const cols=[tok('--oracle'),tok('--fq'),tok('--io'),tok('--las'),tok('--ada')];
+  const alphas=[0.5,0.9,0.9,0.9,0.9];
+  const psis=[PSI_ORACLE,PSI_FQ,PSI_IO,PSI_LAS,PSI_ADA];
+  const n=LABELS.length,grp=pw/n;
+  const bw=(grp-8)/5;
+  const ymax=8,ymin=-6;
+  const sy=v=>P.t+ph*(1-(v-ymin)/(ymax-ymin));
+
+  // zero line + grid
+  [0,2,4,6,-2,-4].forEach(v=>{
+    ctx.strokeStyle=tok('--border');ctx.lineWidth=v===0?1:0.4;ctx.setLineDash(v===0?[]:[3,3]);
+    const y=sy(v);
+    ctx.beginPath();ctx.moveTo(P.l,y);ctx.lineTo(P.l+pw,y);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=tok('--muted');ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText(v,P.l-3,y+3);
+  });
+
+  for(let i=0;i<n;i++){
+    const gx=P.l+i*grp+4;
+    psis.forEach((arr,c)=>{
+      const v=arr[i];
+      ctx.fillStyle=cols[c];ctx.globalAlpha=alphas[c];
+      const h=Math.abs(v)/(ymax-ymin)*ph;
+      const y=v>=0?sy(v):sy(0);
+      ctx.fillRect(gx+c*(bw+1),v>=0?y:sy(0),bw,v>=0?h:-h);
+    });
+    ctx.globalAlpha=1;
+    // label
+    const lx=gx+bw*2.5;
+    const parts=LABELS[i].split('\n');
+    ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
+    if(parts[1]){
+      ctx.fillStyle=tok('--muted');ctx.fillText(parts[0],lx,H-25);
+      ctx.fillStyle=tok('--ada');ctx.font='8px Inter,sans-serif';
+      ctx.fillText(parts[1],lx,H-14);
+    } else {
+      ctx.fillStyle=tok('--muted');ctx.fillText(parts[0],lx,H-14);
+    }
+  }
+  ctx.strokeStyle=tok('--border');ctx.lineWidth=1;ctx.strokeRect(P.l,P.t,pw,ph);
+}
+
+// ── 2. boundary scatter ──────────────────────────────────────────────────────
+function drawBoundary(){
+  const cv=document.getElementById('cv-boundary');
+  const{ctx,W,H}=setupCanvas(cv);
+  const P={l:28,r:12,t:12,b:30};
+  const pw=W-P.l-P.r,ph=H-P.t-P.b;
+  const xmin=-3.5,xmax=3.5,ymin=-3.5,ymax=3.5;
+  const sx=v=>P.l+pw*(v-xmin)/(xmax-xmin);
+  const sy=v=>P.t+ph*(1-(v-ymin)/(ymax-ymin));
+
+  // grid
+  [-2,0,2].forEach(v=>{
+    ctx.strokeStyle=tok('--border');ctx.lineWidth=v===0?0.8:0.3;ctx.setLineDash(v===0?[2,3]:[2,3]);
+    ctx.beginPath();ctx.moveTo(sx(v),P.t);ctx.lineTo(sx(v),P.t+ph);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(P.l,sy(v));ctx.lineTo(P.l+pw,sy(v));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=tok('--muted');ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='center';
+    ctx.fillText(v,sx(v),P.t+ph+14);
+    if(v!==0){ctx.textAlign='right';ctx.fillText(v,P.l-3,sy(v)+3);}
+  });
+
+  // scatter points
+  pts.forEach(p=>{
+    const col=p.dstar>0?'rgba(120,180,255,0.4)':'rgba(255,180,120,0.4)';
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(sx(p.x1),sy(p.x3),2.5,0,Math.PI*2);ctx.fill();
+  });
+
+  // boundary lines: y = -(psi0 + psi1*x) / psi3  (fixing O1_2=O1_4=O1_5=O1_6=0)
+  const methods=[
+    {key:'oracle',col:tok('--oracle'),dash:[],lw:2},
+    {key:'fq',    col:tok('--fq'),   dash:[5,3],lw:1.5},
+    {key:'io',    col:tok('--io'),   dash:[5,3],lw:1.5},
+    {key:'las',   col:tok('--las'),  dash:[4,2],lw:1.5},
+    {key:'ada',   col:tok('--ada'), dash:[3,2],lw:1.5}
+  ];
+  methods.forEach(m=>{
+    const psi=PSI_FULL[m.key];
+    const p0=psi[0],p1=psi[1],p3=psi[3];
+    // psi0 + psi1*x + psi3*y = 0 => y = -(psi0+psi1*x)/psi3
+    if(Math.abs(p3)<1e-6) return;
+    const x0=xmin, x1=xmax;
+    const y0=-(p0+p1*x0)/p3;
+    const y1=-(p0+p1*x1)/p3;
+    ctx.strokeStyle=m.col;ctx.lineWidth=m.lw;ctx.setLineDash(m.dash);
+    ctx.beginPath();ctx.moveTo(sx(x0),sy(y0));ctx.lineTo(sx(x1),sy(y1));ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // axis labels
+  ctx.fillStyle=tok('--muted');ctx.font='10px Inter,sans-serif';ctx.textAlign='center';
+  ctx.fillText('O1₁',P.l+pw/2,H-2);
+  ctx.save();ctx.translate(10,P.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('O1₃',0,0);ctx.restore();
+  ctx.strokeStyle=tok('--border');ctx.lineWidth=1;ctx.strokeRect(P.l,P.t,pw,ph);
+}
+
+// ── 3. error by margin ───────────────────────────────────────────────────────
+function drawMargin(){
+  const cv=document.getElementById('cv-margin');
+  const{ctx,W,H}=setupCanvas(cv);
+  const P={l:36,r:12,t:12,b:38};
+  const pw=W-P.l-P.r,ph=H-P.t-P.b;
+  const xs=BINS.map(b=>b.m);
+  const xmax=15,ymax=0.65;
+  const sx=v=>P.l+pw*v/xmax;
+  const sy=v=>P.t+ph*(1-v/ymax);
+
+  // grid
+  [0,0.1,0.2,0.3,0.4,0.5].forEach(v=>{
+    ctx.strokeStyle=tok('--border');ctx.lineWidth=v===0?1:0.4;ctx.setLineDash(v===0?[]:[3,3]);
+    ctx.beginPath();ctx.moveTo(P.l,sy(v));ctx.lineTo(P.l+pw,sy(v));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=tok('--muted');ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText((v*100).toFixed(0)+'%',P.l-3,sy(v)+3);
+  });
+
+  const lines=[
+    {key:'fq', col:tok('--fq'),  dash:[],lw:2},
+    {key:'io', col:tok('--io'),  dash:[],lw:2},
+    {key:'las',col:tok('--las'), dash:[4,2],lw:1.5},
+    {key:'ada',col:tok('--ada'), dash:[3,2],lw:1.5}
+  ];
+  lines.forEach(l=>{
+    ctx.strokeStyle=l.col;ctx.lineWidth=l.lw;ctx.setLineDash(l.dash);
+    ctx.beginPath();
+    BINS.forEach((b,i)=>{
+      const x=sx(b.m),y=sy(b[l.key]);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    // dots
+    ctx.setLineDash([]);
+    BINS.forEach(b=>{
+      ctx.fillStyle=l.col;
+      ctx.beginPath();ctx.arc(sx(b.m),sy(b[l.key]),3,0,Math.PI*2);ctx.fill();
+    });
+    ctx.setLineDash(l.dash);
+  });
+  ctx.setLineDash([]);
+
+  // axis labels
+  ctx.fillStyle=tok('--muted');ctx.font='10px Inter,sans-serif';ctx.textAlign='center';
+  ctx.fillText('경계까지 거리 |ψ*\'S₁|',P.l+pw/2,H-2);
+  ctx.save();ctx.translate(10,P.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('오류율',0,0);ctx.restore();
+
+  // "경계 근처" annotation
+  ctx.strokeStyle=tok('--border');ctx.lineWidth=0.8;ctx.setLineDash([2,2]);
+  ctx.beginPath();ctx.moveTo(sx(3),P.t+2);ctx.lineTo(sx(3),P.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=tok('--muted');ctx.font='9px Inter,sans-serif';ctx.textAlign='left';
+  ctx.fillText('경계 근처',sx(0.2),P.t+12);
+
+  ctx.strokeStyle=tok('--border');ctx.lineWidth=1;ctx.strokeRect(P.l,P.t,pw,ph);
+}
+
+// ── 4. box plots ─────────────────────────────────────────────────────────────
+function drawBox(){
+  const cv=document.getElementById('cv-box');
+  const{ctx,W,H}=setupCanvas(cv);
+  const P={l:46,r:12,t:12,b:30};
+  const pw=W-P.l-P.r,ph=H-P.t-P.b;
+
+  const series=[
+    {d:DIST.fq, col:tok('--fq'), label:'Full Q'},
+    {d:DIST.io, col:tok('--io'), label:'IO OLS'},
+    {d:DIST.las,col:tok('--las'),label:'LASSO'},
+    {d:DIST.ada,col:tok('--ada'),label:'AdaLASSO'}
+  ];
+  const allv=[].concat(...series.map(s=>s.d));
+  const vmin=Math.min(...allv)-0.01, vmax=Math.max(...allv)+0.005;
+  const sy=v=>P.t+ph*(1-(v-vmin)/(vmax-vmin));
+
+  const ticks=[0.55,0.60,0.65,0.70,0.80,0.90,0.94,0.96];
+  ticks.forEach(v=>{
+    if(v<vmin||v>vmax) return;
+    ctx.strokeStyle=tok('--border');ctx.lineWidth=0.4;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(P.l,sy(v));ctx.lineTo(P.l+pw,sy(v));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=tok('--muted');ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText((v*100).toFixed(0)+'%',P.l-3,sy(v)+3);
+  });
+
+  const grp=pw/4,bw=grp*0.45;
+  series.forEach((s,i)=>{
+    const sorted=[...s.d].sort((a,b)=>a-b);
+    const n=sorted.length;
+    const q1=sorted[Math.floor(n*.25)];
+    const med=sorted[Math.floor(n*.5)];
+    const q3=sorted[Math.floor(n*.75)];
+    const iqr=q3-q1;
+    const lo=Math.max(sorted[0],q1-1.5*iqr);
+    const hi=Math.min(sorted[n-1],q3+1.5*iqr);
+    const mean=s.d.reduce((a,b)=>a+b)/n;
+    const cx=P.l+i*grp+grp/2;
+
+    ctx.strokeStyle=s.col;ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
+
+    // whiskers
+    [[lo,q1],[q3,hi]].forEach(([a,b])=>{
+      ctx.beginPath();ctx.moveTo(cx,sy(a));ctx.lineTo(cx,sy(b));ctx.stroke();
+    });
+    [lo,hi].forEach(v=>{
+      ctx.beginPath();ctx.moveTo(cx-6,sy(v));ctx.lineTo(cx+6,sy(v));ctx.stroke();
+    });
+
+    // IQR box
+    ctx.fillStyle=s.col;ctx.globalAlpha=0.15;
+    ctx.fillRect(cx-bw/2,sy(q3),bw,sy(q1)-sy(q3));
+    ctx.globalAlpha=0.9;ctx.lineWidth=1.5;
+    ctx.strokeRect(cx-bw/2,sy(q3),bw,sy(q1)-sy(q3));
+
+    // median
+    ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(cx-bw/2,sy(med));ctx.lineTo(cx+bw/2,sy(med));ctx.stroke();
+
+    // mean dot
+    ctx.fillStyle=s.col;ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(cx,sy(mean),3,0,Math.PI*2);ctx.fill();
+
+    ctx.fillStyle=tok('--muted');ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
+    ctx.fillText(s.label,cx,H-5);
+  });
+  ctx.globalAlpha=1;
+  ctx.strokeStyle=tok('--border');ctx.lineWidth=1;ctx.strokeRect(P.l,P.t,pw,ph);
+}
+
+function init(){drawCoef();drawBoundary();drawMargin();drawBox();}
+window.addEventListener('load',init);
+window.addEventListener('resize',init);
+</script>

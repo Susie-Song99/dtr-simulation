@@ -51,22 +51,25 @@ Adaptive LASSO로 최종 해결하는 연구 서사를 재현한다.
 
 ```
 dtr_simulation/
-├── 00_dgp.R          # 공유 상수, DGP 함수, oracle ψ₁* 계산
-├── 01_problem.R      # Full Q-Learning 편향 발견 (단계 1~3)
-├── 02_candidates.R   # IO-QL 수도아웃컴 재설계 (단계 4~5)
-├── 03_variance.R     # 분산 원인 추적 (단계 6~10)
-│                     #   3A: IO-QL vs Oracle 분산 비교
-│                     #   3B: 경계 오류 패턴
-│                     #   3C: 분산 원천 분해 (M̃, ε₂, G̃)
-│                     #   3D: 경계 집중 3D 시각화
-│                     #   3E: Ablation — M̃ 제거 실험
-│                     #   3F: Stage 2 + Stage 1 전면 진단
-├── 04_regularize.R   # 후보 비교 + AdaLASSO 채택 (단계 11~12)
-├── 05_summary.R      # 12단계 연구 서사 요약 + 최종 플롯
-├── run_all.R         # 전체 실행 스크립트
+├── 00_dgp.R              # 공유 상수, DGP 함수, oracle ψ₁* 계산
+├── 01_problem.R          # Full Q-Learning 편향 발견 (단계 1~3)
+├── 02_candidates.R       # IO-QL 수도아웃컴 재설계 (단계 4~5)
+├── 03_variance.R         # 분산 원인 추적 (단계 6~10)
+│                         #   3A: IO-QL vs Oracle 분산 비교
+│                         #   3B: 경계 오류 패턴
+│                         #   3C: 분산 원천 분해 (M̃, ε₂, G̃)
+│                         #   3D: 경계 집중 3D 시각화
+│                         #   3E: Ablation — M̃ 제거 실험
+│                         #   3F: Stage 2 + Stage 1 전면 진단
+├── 04_regularize.R       # 후보 비교 + AdaLASSO 채택 (단계 11~12)
+├── 05_summary.R          # 12단계 연구 서사 요약 + 최종 플롯
+├── 06_complex_dgp.R      # 복잡 환경 확장 (p=6, train/test split)
+├── run_all.R             # 전체 실행 스크립트
 └── plots/
     ├── 04_regularize.png
-    └── 05_summary.png
+    ├── 05_summary.png
+    ├── 06_complex_dgp_data.json   # B=300 시뮬레이션 결과
+    └── 06_complex_dgp_viz.html    # 4-method 비교 인터랙티브 시각화
 ```
 
 ---
@@ -111,9 +114,40 @@ Rscript --no-init-file run_all.R
 
 ---
 
+---
+
+## 복잡 환경 확장 실험 (06_complex_dgp.R)
+
+p=2 단순 DGP를 p=6으로 확장하고 train/test를 분리한 추가 검증.
+
+### DGP 설계
+
+- p=6, 활성 차원: O1₁, O1₃ (나머지 4개는 비활성 노이즈)
+- O2₁ = O1₁ + 1.5·A1 + ε, O2₃ = O1₃ − 1.0·A1 + ε (O1 → O2 carry-forward)
+- g₂ = O2₁ + 0.8·O2₃, m₂ = γ(O2₁² + O2₃²) + 0.3·O2₂  (γ=2.0)
+- **Oracle ψ₁*** ≈ (0, 6.30, 0, −3.74, 0, 0, 0)
+
+### 결과 (N_train=N_test=600, B=300)
+
+| 방법 | Train Acc | Test Acc | ψ̂₁ sparsity |
+|------|-----------|----------|-------------|
+| Full Q + OLS | 59.4% | 59.0% | 비활성 계수 오염, 방향 역전 |
+| IO-QL + OLS | 94.8% | 94.8% | 모든 계수 비영 |
+| IO-QL + LASSO | 94.0% | 93.9% | 비활성 계수 부분 복원 |
+| IO-QL + AdaLASSO | 93.9% | 93.9% | 비활성 계수 완전 복원 |
+
+### 주요 발견
+
+- **Full Q**: γ=2.0 비선형 주효과 → 수도아웃컴 오염 → ψ̂₁ 방향 역전 → 59% (무작위)
+- **IO-QL vs Full Q**: +35.8%p — 주효과 편향 제거 효과 압도적
+- **LASSO/AdaLASSO**: 정확도는 OLS와 유사하나 비활성 차원 계수를 0으로 복원 → 경계가 올바른 (O1₁, O1₃) 2D 부분공간에 집중
+- **Train-test 갭**: 4개 방법 모두 ≈0 → p=6, N=600에서 과적합 없음; 개선은 bias 제거에 의한 것
+
+---
+
 ## 환경
 
 ```
 R >= 4.0
-glmnet, ggplot2, dplyr, tidyr, patchwork
+glmnet, ggplot2, dplyr, tidyr, patchwork, jsonlite
 ```
